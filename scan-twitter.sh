@@ -90,7 +90,7 @@ Then APPEND a section per handle to the file "$OUTFILE" using the Write tool
 (read it first if it already exists so you append rather than overwrite). Format:
 
   ## @<handle> — <display name>
-  _scanned $STAMP_
+  _scanned ${STAMP}_
 
   ### <relative age> — <one-line summary>
   <full verbatim post text>
