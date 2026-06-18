@@ -19,7 +19,7 @@ def add(id, account, author, role_org, date, gold, text, entity_note="", truncat
         "full_text": text.strip(), "gold_label": gold, "gold_note": gold_note,
     })
 
-KARP = "Andrej Karpathy"; KR = "Founder, Eureka Labs; ex-OpenAI, ex-Tesla AI"
+KARP = "Andrej Karpathy"; KR = "Anthropic (joined May 2026); ex-OpenAI, ex-Tesla AI; founder Eureka Labs"
 DWAR = "Dwarkesh Patel"; DR = "Host, Dwarkesh Podcast"
 PERCY = "Percy Liang"; PR = "Stanford CS prof; Marin open lab; Together AI"
 PACH = "Jakub Pachocki"; PAR = "Chief Scientist, OpenAI"
@@ -29,9 +29,10 @@ add("1", "karpathy", KARP, KR, "2023-01-25", "INSIG",
     "The hottest new programming language is English")
 add("2", "karpathy", KARP, KR, "2026-06-13", "INSIG",
     "In awe of SpaceX and its story - past, present and the future. You can think about it in 10+ different ways and continue re-blowing your mind in circles. Huge congrats to the team!")
-add("3", "karpathy", KARP, KR, "2026-06-10", "INSIG",
+add("3", "karpathy", KARP, KR, "2026-06-10", "SIG",
     "This is a super exciting release - Claude Fable 5 is the same underlying model as Mythos but with added safeguards. The benchmarks are great and it's SOTA on everything by a margin but I'll add that *qualitatively* also, this is a major-version-bump-deserving step change forward",
-    entity_note="Reply to @claudeai. Karpathy is not affiliated with Anthropic (an outsider on this release).")
+    entity_note="Reply to @claudeai. Karpathy joined Anthropic 2026-05-20, so by this date he is an INSIDER on Claude releases — insider framing, not outsider echo.",
+    gold_note="corrected 2026-06-19: was INSIG on a false outsider premise (we didn't know he'd joined Anthropic)")
 add("4", "karpathy", KARP, KR, "2026-06-03", "SKIP",
     "", entity_note="Media/quote repost of @trq212 with no extractable text.", truncated=True)
 add("5", "karpathy", KARP, KR, "2026-06-01", "SIG",
