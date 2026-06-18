@@ -1,45 +1,46 @@
 #!/usr/bin/env bash
 #
-# scan-twitter.sh — significance-filtered X/Twitter monitor (Milestone 1).
+# scan-twitter.sh — significance-filtered X/Twitter monitor + engagement (M1+M2).
 #
-# Pipeline (one headless `claude -p` agent drives the whole thing):
-#   CAPTURE  -> for each handle, fetch posts NEW since last run (incremental),
-#               expand threads, store verbatim + metadata.
-#   JUDGE    -> label each new post SIG/INSIG/SKIP via the rubric + entity-context
-#               from people-db.
-#   REPORT   -> one synthesized summary PER PERSON who had >=1 new significant
-#               post, with source links. (Per-person, not per-post.)
+#   CAPTURE -> JUDGE -> (ENGAGE) -> PERSIST + REPORT
 #
-# Artifacts:
-#   store/raw/twitter-<runid>.jsonl  — every post seen this run (+ label/reason).
-#                                      Append-only memory: dedup + re-judge + corpus.
-#   digests/twitter-<date>.md        — the human deliverable (per-person summaries).
+# CAPTURE  incremental (dedup vs raw store) + thread-expand.
+# JUDGE    SIG/INSIG/SKIP via shared rubric + people-db entity-context.
+# ENGAGE   (opt-in) on SIG posts: like the post + follow its author (incl. the
+#          original author of a reshared/quoted SIG post). One bar: SIG = like+follow.
+# REPORT   one synthesized summary PER PERSON of significant activity.
 #
-# Engagement (like/follow) is NOT here yet — that's Milestone 2.
+# Engagement is OFF unless --engage. Use --dry-run the first time (logs intended
+# actions, no clicks). Caps + idempotency + an action log keep it safe.
 #
 # Usage:
-#   ./scan-twitter.sh                      # handles.txt
-#   ./scan-twitter.sh karpathy percyliang  # ad-hoc handles
-#   ./scan-twitter.sh -n 15                # cap new posts/handle this run
+#   ./scan-twitter.sh                              # monitor only (no engagement)
+#   ./scan-twitter.sh karpathy bcherny             # ad-hoc handles
+#   ./scan-twitter.sh --engage --dry-run           # log what it WOULD like/follow
+#   ./scan-twitter.sh --engage                     # LIVE like/follow on SIG
+#   ./scan-twitter.sh --engage --max-likes 20 --max-follows 8
 #
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
-NPOSTS=15
-HANDLES_FILE="handles.txt"
+NPOSTS=15; HANDLES_FILE="handles.txt"
 PEOPLE_DB="${PEOPLE_DB:-$DIR/../people-db/people.json}"
-RUBRIC="$DIR/eval/judge_prompt.md"
-STORE_DIR="$DIR/store/raw"
-DIGEST_DIR="$DIR/digests"
+RUBRIC="${RUBRIC:-$DIR/../people-db/judge_prompt.md}"
+STORE_DIR="$DIR/store/raw"; ACT_DIR="$DIR/store/actions"; DIGEST_DIR="$DIR/digests"
+ENGAGE=0; DRYRUN=0; MAXL=25; MAXF=12
 HANDLES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -n) NPOSTS="$2"; shift 2 ;;
     -f) HANDLES_FILE="$2"; shift 2 ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    --engage) ENGAGE=1; shift ;;
+    --dry-run) DRYRUN=1; shift ;;
+    --max-likes) MAXL="$2"; shift 2 ;;
+    --max-follows) MAXF="$2"; shift 2 ;;
+    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
     *) HANDLES+=("${1#@}"); shift ;;
   esac
 done
@@ -53,88 +54,89 @@ if [[ ${#HANDLES[@]} -eq 0 ]]; then
 fi
 [[ ${#HANDLES[@]} -gt 0 ]] || { echo "No handles to scan." >&2; exit 1; }
 
-mkdir -p "$STORE_DIR" "$DIGEST_DIR"
+mkdir -p "$STORE_DIR" "$ACT_DIR" "$DIGEST_DIR"
 [[ -f "$RUBRIC" ]] || { echo "Missing rubric: $RUBRIC" >&2; exit 1; }
 [[ -f "$PEOPLE_DB" ]] || echo "WARN: people-db not found at $PEOPLE_DB (entity-context degraded)" >&2
 
-DATE="$(date +%Y-%m-%d)"
-RUNID="$(date +%Y%m%d-%H%M%S)"
-STAMP="$(date '+%Y-%m-%d %H:%M %Z')"
+DATE="$(date +%Y-%m-%d)"; RUNID="$(date +%Y%m%d-%H%M%S)"; STAMP="$(date '+%Y-%m-%d %H:%M %Z')"
 RAWFILE="$STORE_DIR/twitter-$RUNID.jsonl"
 DIGEST="$DIGEST_DIR/twitter-$DATE.md"
 SEEN="$STORE_DIR/.seen_ids.txt"
+ACTFILE="$ACT_DIR/twitter-$RUNID.jsonl"
 
-# Build the set of already-seen post ids (dedup / incremental boundary).
+if   [[ $ENGAGE -eq 0 ]]; then ENGAGE_DESC="OFF"
+elif [[ $DRYRUN -eq 1 ]]; then ENGAGE_DESC="DRY-RUN (record intended actions only, NO clicks)"
+else ENGAGE_DESC="LIVE (actually like + follow)"; fi
+
 python3 - "$STORE_DIR" > "$SEEN" <<'PY'
 import sys, glob, json, os
-seen = set()
-for fp in glob.glob(os.path.join(sys.argv[1], "twitter-*.jsonl")):
-    with open(fp, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line: continue
-            try: seen.add(json.loads(line)["id"])
-            except Exception: pass
+seen=set()
+for fp in glob.glob(os.path.join(sys.argv[1],"twitter-*.jsonl")):
+    for line in open(fp,encoding="utf-8"):
+        line=line.strip()
+        if not line: continue
+        try: seen.add(json.loads(line)["id"])
+        except Exception: pass
 print("\n".join(sorted(seen)))
 PY
 SEEN_COUNT=$(grep -c . "$SEEN" || true)
-
 HANDLE_LINES="$(printf '  - @%s\n' "${HANDLES[@]}")"
-echo ">> Scanning ${#HANDLES[@]} handle(s); up to $NPOSTS new posts each; $SEEN_COUNT ids already seen."
-echo ">> Raw -> $RAWFILE   Digest -> $DIGEST"
+echo ">> Scanning ${#HANDLES[@]} handle(s); $NPOSTS new/handle; $SEEN_COUNT seen; engagement: $ENGAGE_DESC"
+echo ">> Raw: $RAWFILE  Digest: $DIGEST  Actions: $ACTFILE"
 
 PROMPT=$(cat <<EOF
 You are an unattended X/Twitter intelligence agent using the chrome-devtools MCP
 tools (browser already logged in). Goal: surface what AI leaders are doing/thinking.
-Work human-paced. Run three stages in order: CAPTURE -> JUDGE -> REPORT.
+Work human-paced. Stages: CAPTURE -> JUDGE -> ENGAGE (inline) -> PERSIST + REPORT.
 
-First read these (use the Read tool):
-- Significance rubric: $RUBRIC  (apply it exactly, including the edge-case tie-breakers)
-- Entity / people context: $PEOPLE_DB  (per-person role_org + notes; use as entity-context when judging)
-- Already-seen post ids (one per line; DO NOT re-capture these): $SEEN
+Read first (Read tool):
+- Rubric: $RUBRIC  (apply exactly, incl. edge-case tie-breakers)
+- People/entity context: $PEOPLE_DB  (match author for role_org + notes)
+- Already-seen ids (DO NOT re-capture): $SEEN
 
-Handles to scan:
+Handles:
 $HANDLE_LINES
 
-== STAGE 1: CAPTURE (incremental) ==
-For each handle, navigate to https://x.com/<handle> (navigate_page timeout 60000;
-if it reports a timeout, ignore it and snapshot anyway; if you hit a login wall,
-record the handle as logged-out and move on).
-- Scroll and read posts from newest downward. STOP for that handle once you reach
-  posts whose id is in the already-seen list, or after ~$NPOSTS new posts, whichever first.
-- The X timeline is virtualised — read each snapshot as you scroll.
-- THREADS: if a post is the head of the author's self-reply thread, expand it
-  ("Show this thread" / open it) and capture the WHOLE chain as ONE item.
-- For each new post capture: stable id (from its status permalink; else synthesize
-  "<handle>:<date>:<first40chars>"), author, date (ISO if possible else relative),
-  type (original|reply|repost|quote|thread), verbatim text (expand "Show more"),
-  links, and engagement counts. Skip promoted/ads and "who to follow".
+== CAPTURE (incremental) ==
+For each handle, navigate https://x.com/<handle> (timeout 60000; a reported
+timeout is usually false — snapshot anyway; login wall -> record logged-out, skip).
+Read newest downward; STOP at a seen id or after ~$NPOSTS new posts. Timeline is
+virtualised — read each snapshot as you scroll. Expand self-reply THREADS and
+capture the whole chain as one item. Capture per post: stable id (status
+permalink; else "<handle>:<date>:<first40>"), author, date, type, verbatim text
+(expand "Show more"), links, engagement counts. Skip ads/"who to follow".
 
-== STAGE 2: JUDGE ==
-For every newly captured post, look up the author in the people context for
-role_org + notes (entity-context), then apply the rubric to assign
-label = SIG | INSIG | SKIP and a <=12-word reason.
+== JUDGE ==
+For each new post, use the entity-context, then apply the rubric -> label
+(SIG|INSIG|SKIP) + <=12-word reason.
 
-== STAGE 3: PERSIST + REPORT ==
-A) Write ALL newly captured posts (every label) to "$RAWFILE" as JSONL — one JSON
-   object per line, no array wrapper. Each object MUST have keys:
-   id, platform ("x"), handle, author, date, type, text, links (array),
-   engagement (object), thread_ids (array, may be empty), label, reason,
-   scraped_at ("$STAMP").
-B) Write the human digest to "$DIGEST" (Markdown). Structure:
-   - Title: "# X digest — $DATE" and a one-line header with counts
-     (new posts captured, significant count, people covered).
-   - Then ONE section PER PERSON who had >=1 new SIG post:
-       "## <Author> (@<handle>)"
-       a synthesized 2-4 sentence summary of *what that person is doing/thinking*
-       right now, rolled up across their significant posts (NOT one blurb per post),
-       followed by a line "_sources: <dates/ids or short refs>_".
-     Omit people with no new significant posts.
-   - End with a short footer: people scanned with nothing significant, and any
-     logged-out/empty handles.
+== ENGAGE (mode: $ENGAGE_DESC) ==
+Do this INLINE — the moment you judge a post SIG, act while it's on screen
+(before scrolling past). Caps this run: max $MAXL likes, max $MAXF follows.
+- If mode is OFF: do nothing here; never like or follow.
+- Otherwise, for each SIG post:
+  * LIKE the post (its Like control). Skip if already liked.
+  * FOLLOW its author if not already following. If the SIG post is a
+    reshare/quote of a DIFFERENT account, also FOLLOW that original author if not
+    already following.
+  * Respect caps; once a cap is hit, stop that action type and note it.
+  * If mode is DRY-RUN: DO NOT click anything — only record what you WOULD do.
+  * Append each action to "$ACTFILE" as JSONL:
+    {"action":"like"|"follow","post_id":"...","target":"@handle or url","author":"...","dry_run":$( [[ $DRYRUN -eq 1 ]] && echo true || echo false ),"ts":"$STAMP"}
+  Never like/follow INSIG or SKIP posts.
 
-When done, print a one-line summary: per handle, how many new posts captured and
-how many were significant.
+== PERSIST + REPORT ==
+A) Write ALL new posts (every label) to "$RAWFILE" as JSONL, keys: id, platform
+   ("x"), handle, author, date, type, text, links[], engagement{}, thread_ids[],
+   label, reason, scraped_at ("$STAMP").
+B) Write digest to "$DIGEST": "# X digest — $DATE" + one-line counts; then one
+   "## <Author> (@handle)" section PER PERSON with >=1 new SIG post — a synthesized
+   2-4 sentence summary of what they're doing/thinking (rolled up, NOT per-post) +
+   "_sources: ..._". Omit people with nothing significant. Footer: nothing-significant
+   handles, logged-out/empty handles, and engagement summary (likes/follows done or,
+   in dry-run, intended).
+
+Finally print one line per handle: new captured / significant / engaged counts.
 EOF
 )
 
@@ -144,4 +146,4 @@ claude -p "$PROMPT" \
   --allowedTools "mcp__chrome-devtools__navigate_page,mcp__chrome-devtools__take_snapshot,mcp__chrome-devtools__evaluate_script,mcp__chrome-devtools__click,mcp__chrome-devtools__list_pages,mcp__chrome-devtools__new_page,Read,Write" \
   2>&1 | tee "$DIGEST_DIR/run-$RUNID.log"
 
-echo ">> Done. Digest: $DIGEST   Raw: $RAWFILE"
+echo ">> Done. Digest: $DIGEST  Raw: $RAWFILE  Actions: $ACTFILE (engagement: $ENGAGE_DESC)"
