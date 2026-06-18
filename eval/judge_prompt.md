@@ -37,6 +37,25 @@ lookup the live system will do).
 - Judge significance only — ignore the post's age (recency is handled elsewhere).
 - If borderline, pick the side it leans and say "borderline" in the reason.
 
+## Edge-case tie-breakers
+
+- **Aphorisms / viral one-liners.** A pithy general statement with no specifics
+  and no tie to the author's *own* AI work is INSIG — even if it sounds like a
+  "take" or went viral. SIG needs concrete information, a novel claim, or a
+  position grounded in their own work/project.
+- **Reacting to news vs surfacing it.** *Meta-praise or excitement about someone
+  else's announcement* ("great release, it's SOTA!") is INSIG unless the author
+  is an insider on it OR adds substantive non-obvious analysis. But *surfacing
+  the substantive content itself* (the actual findings/data/argument) is SIG —
+  that's curation, not mere reaction.
+- **Partial-AI amplification.** A leader amplifying info-dense content that is at
+  least *partly* AI-relevant is SIG (it reveals their attention). Content with
+  *no* AI relevance at all (sports, pure history/economics, generic life) is
+  INSIG even if substantive or heartfelt.
+- **Media-locked promos.** If the real substance is in unreachable media
+  (podcast/video) and the post is just a promo — even one listing topics or
+  chapters — that's metadata about the content, not the content itself: SKIP.
+
 ## Output
 A JSON array, one object per post, in input order:
 `{ "id": "...", "label": "SIG|INSIG|SKIP", "reason": "<= 12 words" }`
