@@ -1,0 +1,12 @@
+# One X/Twitter handle per line (with or without @). Blanks and # comments ignored.
+# The scanner opens https://x.com/<handle> for each.
+#
+# NOTE: verify these handles before relying on them — they're best-guess seeds
+# for the AI folks who are X-native (and dead on LinkedIn). Fix any that 404.
+
+karpathy          # Andrej Karpathy
+dwarkesh_sp       # Dwarkesh Patel
+percyliang        # Percy Liang
+merettm           # Jakub Pachocki (OpenAI) — verify
+# bcherny         # Boris Cherny (Anthropic) — verify handle / activity
+# <??>            # Alan, CTO of Corca — handle unknown; add once identified
