@@ -111,12 +111,19 @@ Only for SIG posts. Caps: max $MAXL likes, max $MAXF follows.
 - Log each action to "$ACTFILE": {"action":"like"|"follow","post_id":"...","target":"@handle","author":"...","dry_run":$( [[ $DRYRUN -eq 1 ]] && echo true || echo false ),"ts":"$STAMP"}
 
 == DISCOVER (bounded: add at most $MAXNEW new people this run) ==
-For a SIG post whose author is NOT among the already-tracked handles in the people
-context: judge from their bio/headline/role whether they are a GENUINE AI person or
-operator (founder/researcher/builder/exec in AI) — NOT a generic influencer, rando,
-or non-AI account. Only if YES, append a discovery to "$DISCFILE":
-  {"platform":"x","handle":"<handle>","name":"<display name>","kind":"person","role_org":"<their bio/role>"}
-Stop adding once $MAXNEW are recorded (note it). One record per new handle.
+A candidate = the author of a SIG post who is NOT among the already-tracked handles.
+Process candidates newest-first; STOP once $MAXNEW are added (and don't evaluate many
+more than that — bound the cost). For each candidate:
+  1. OPEN their profile — navigate to https://x.com/<handle>, read their BIO + ~3 recent
+     posts. The X feed shows NO bio, so you MUST check the profile; never judge from the
+     handle alone. (READ-ONLY — do not like/follow/reply on the profile.)
+  2. DECIDE: are they a GENUINE AI person/operator (founder / researcher / builder / exec
+     in AI, or consistently posts substantive AI work) — NOT a generic influencer, rando,
+     or non-AI account?
+  3. If YES, append to "$DISCFILE":
+     {"platform":"x","handle":"<handle>","name":"<display name>","kind":"person","role_org":"<from their actual bio>"}
+One record per new handle. A SIG author judged NOT an AI-person is reported but not added
+(and not followed).
 
 == PERSIST + REPORT ==
 A) Write ALL captured posts (every label) to "$RAWFILE" as JSONL (keys: id, platform
