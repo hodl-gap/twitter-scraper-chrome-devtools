@@ -127,7 +127,9 @@ Inline — act the moment you judge a post SIG. Caps: max $MAXL likes, max $MAXF
 - If mode is OFF: do nothing here.
 - Else for each SIG post: LIKE it (skip if already liked); FOLLOW its author if not
   already following, and if it reshares/quotes a DIFFERENT account, also FOLLOW that
-  original author if new. Respect caps. If DRY-RUN: record only, do NOT click.
+  original author if new. FOLLOW only PEOPLE — never follow org/product/company accounts
+  (e.g. @OpenAI, @claudeai): like their posts, but do not follow them. Respect caps.
+  If DRY-RUN: record only, do NOT click.
   Append each action to "$ACTFILE" as JSONL:
   {"action":"like"|"follow","post_id":"...","target":"@handle/url","author":"...","dry_run":$( [[ $DRYRUN -eq 1 ]] && echo true || echo false ),"ts":"$STAMP"}
   Never like/follow INSIG or SKIP.
