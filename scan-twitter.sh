@@ -139,10 +139,14 @@ A) Write ALL new posts (every label) to "$RAWFILE" as JSONL, keys: id, platform
    ("x"), handle, author, date, type, text, links[], engagement{}, thread_ids[],
    label, reason, scraped_at ("$STAMP").
 B) DISCOVERIES (always, regardless of engagement): for each SIG post that
-   reshares/quotes an author who is NOT one of the scanned handles above, append
-   to "$DISCFILE" a JSONL record:
+   reshares/quotes an author who is NOT one of the scanned handles above, FIRST
+   judge whether that author is a GENUINE AI person/operator (founder/researcher/
+   builder/exec in AI) or an AI org/product — from their handle, display name,
+   visible bio, and the post context. ONLY if YES, append to "$DISCFILE":
    {"platform":"x","handle":"<handle>","name":"<display name>","kind":"person"|"organization","role_org":"<short affiliation if visible>"}
    Mark company/product accounts (e.g. @OpenAI, @claudeai) as kind "organization".
+   Do NOT append non-AI accounts (politicians, journalists, generic celebrities,
+   non-AI brands) — note them in the digest if relevant, but never add to people-db.
 C) Write digest to "$DIGEST": "# X digest — $DATE" + one-line counts; then one
    "## <Author> (@handle)" section PER PERSON with >=1 new SIG post — a synthesized
    2-4 sentence summary of what they're doing/thinking (rolled up, NOT per-post) +
